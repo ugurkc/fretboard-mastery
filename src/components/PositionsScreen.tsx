@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { NATURALS, OPEN_NAMES, SHARPS, STRINGS_DOWN, WINDOW_SIZE, isNatural, pitchLabel, positionsOf } from '../lib/notes'
 import type { NoteName } from '../lib/notes'
 import { STEP_INFO } from '../lib/steps'
+import { FretWindowSelect } from './FretWindowSelect'
 
 interface Props {
   windowStart: number
+  onWindowChange: (windowStart: number) => void
   onStartPractice: () => void
 }
 
@@ -16,7 +18,7 @@ function inlayDots(fret: number): number {
 }
 
 /** Step 0: a study page. Every position of the chosen note in the current fret window. */
-export function PositionsScreen({ windowStart, onStartPractice }: Props) {
+export function PositionsScreen({ windowStart, onWindowChange, onStartPractice }: Props) {
   const [note, setNote] = useState<NoteName>('C')
   const [withSharps, setWithSharps] = useState(false)
   const info = STEP_INFO[0]
@@ -25,6 +27,8 @@ export function PositionsScreen({ windowStart, onStartPractice }: Props) {
   const frets = Array.from({ length: WINDOW_SIZE }, (_, i) => windowStart + i)
   const fretOn = new Map(positionsOf(note, windowStart).map((p) => [p.string, p.fret]))
   const label = pitchLabel(note)
+  // 'C♯/D♭' is drawn as C♯ over D♭ and read out as "C♯ or D♭".
+  const names = label.split('/')
   const tableClass = windowStart === 1 ? 'positions from-nut' : 'positions'
 
   return (
@@ -51,23 +55,28 @@ export function PositionsScreen({ windowStart, onStartPractice }: Props) {
             </button>
           ))}
         </div>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={withSharps}
-            onChange={(e) => {
-              setWithSharps(e.target.checked)
-              if (!e.target.checked && !isNatural(note)) setNote('C')
-            }}
-          />{' '}
-          Sharps &amp; flats
-        </label>
+        <div className="positions-options">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={withSharps}
+              onChange={(e) => {
+                setWithSharps(e.target.checked)
+                if (!e.target.checked && !isNatural(note)) setNote('C')
+              }}
+            />{' '}
+            Sharps &amp; flats
+          </label>
+          <FretWindowSelect windowStart={windowStart} onChange={onWindowChange} />
+        </div>
       </section>
 
       <div className="chart-scroll">
         <table className={tableClass}>
           <caption>
-            Where {label} sits in frets {windowStart}–{windowStart + WINDOW_SIZE - 1}
+            <span>
+              Where {label} sits in frets {windowStart}–{windowStart + WINDOW_SIZE - 1}
+            </span>
           </caption>
           <thead>
             <tr>
@@ -93,10 +102,19 @@ export function PositionsScreen({ windowStart, onStartPractice }: Props) {
                 {frets.map((f) => (
                   <td key={f}>
                     {fretOn.get(s) === f && (
-                      <span className={label.includes('/') ? 'dot is-pair' : 'dot'}>
-                        {label.split('/').map((part) => (
-                          <span key={part}>{part}</span>
-                        ))}
+                      <span className={names.length > 1 ? 'dot is-pair' : 'dot'}>
+                        {names.length > 1 ? (
+                          <>
+                            {names.map((part) => (
+                              <span key={part} aria-hidden="true">
+                                {part}
+                              </span>
+                            ))}
+                            <span className="sr-only">{names.join(' or ')}</span>
+                          </>
+                        ) : (
+                          label
+                        )}
                       </span>
                     )}
                   </td>

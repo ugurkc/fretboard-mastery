@@ -1,10 +1,10 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { FretChart } from './components/FretChart'
+import { FretWindowSelect } from './components/FretWindowSelect'
 import { PositionsScreen } from './components/PositionsScreen'
 import { PracticeScreen } from './components/PracticeScreen'
 import { StepTabs } from './components/StepTabs'
 import { formatDuration } from './lib/format'
-import { MAX_WINDOW_START, MIN_WINDOW_START, WINDOW_SIZE } from './lib/notes'
 import {
   browserStore,
   isUnlocked,
@@ -18,13 +18,11 @@ import type { StepId } from './lib/progress'
 
 const store = browserStore()
 const DAILY_GOAL_SECONDS = 5 * 60
-const WINDOW_STARTS = Array.from(
-  { length: MAX_WINDOW_START - MIN_WINDOW_START + 1 },
-  (_, i) => MIN_WINDOW_START + i,
-)
 
 export default function App() {
   const [progress, dispatch] = useReducer(reduce, null, () => loadProgress(store))
+  // True only right after "Start step 1", so that one step change moves focus to the new heading.
+  const [focusPractice, setFocusPractice] = useState(false)
 
   useEffect(() => {
     saveProgress(store, progress)
@@ -40,7 +38,17 @@ export default function App() {
     ) {
       return
     }
+    setFocusPractice(false)
     dispatch({ type: 'setStep', step })
+  }
+
+  function startPractice() {
+    setFocusPractice(true)
+    dispatch({ type: 'setStep', step: 1 })
+  }
+
+  function setWindowStart(windowStart: number) {
+    dispatch({ type: 'setWindowStart', windowStart })
   }
 
   function resetAll() {
@@ -66,36 +74,31 @@ export default function App() {
       {currentStep === 0 ? (
         <PositionsScreen
           windowStart={progress.windowStart}
-          onStartPractice={() => dispatch({ type: 'setStep', step: 1 })}
+          onWindowChange={setWindowStart}
+          onStartPractice={startPractice}
         />
       ) : (
-        <PracticeScreen key={currentStep} step={currentStep} progress={progress} dispatch={dispatch} />
+        <PracticeScreen
+          key={currentStep}
+          step={currentStep}
+          progress={progress}
+          dispatch={dispatch}
+          focusHeading={focusPractice}
+        />
       )}
 
-      <section className="reference">
-        <div className="reference-bar">
-          {/* Step 0 has its own chart, so the reference chart and its toggle are hidden there. */}
-          {currentStep !== 0 && (
+      {/* Step 0 has its own chart and fret selector, so the reference bar is for steps 1–5. */}
+      {currentStep !== 0 && (
+        <section className="reference">
+          <div className="reference-bar">
             <button type="button" onClick={() => dispatch({ type: 'toggleChart' })} aria-expanded={progress.chartVisible}>
               {progress.chartVisible ? 'Hide note chart' : 'Show note chart'}
             </button>
-          )}
-          <label>
-            Frets{' '}
-            <select
-              value={progress.windowStart}
-              onChange={(e) => dispatch({ type: 'setWindowStart', windowStart: Number(e.target.value) })}
-            >
-              {WINDOW_STARTS.map((s) => (
-                <option key={s} value={s}>
-                  {s}–{s + WINDOW_SIZE - 1}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {currentStep !== 0 && progress.chartVisible && <FretChart windowStart={progress.windowStart} />}
-      </section>
+            <FretWindowSelect windowStart={progress.windowStart} onChange={setWindowStart} />
+          </div>
+          {progress.chartVisible && <FretChart windowStart={progress.windowStart} />}
+        </section>
+      )}
 
       <footer className="foot">
         <p>Thanks to Bahadır Peker for introducing me to this method.</p>

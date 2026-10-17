@@ -33,9 +33,11 @@ interface Props {
   step: PracticeStep
   progress: Progress
   dispatch: Dispatch<ProgressEvent>
+  /** Arriving from "Start step 1": scroll to the top and focus the step heading. */
+  focusHeading?: boolean
 }
 
-export function PracticeScreen({ step, progress, dispatch }: Props) {
+export function PracticeScreen({ step, progress, dispatch, focusHeading = false }: Props) {
   const [drill, setDrill] = useState<Exercise>(1)
   const exercise: Exercise = step === 5 ? drill : step
   const [bpm, setBpm] = useState(() => clampBpm(progress.bestBpm[1] || BASE_BPM))
@@ -52,6 +54,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   const stopButton = useRef<HTMLButtonElement>(null)
   const startButton = useRef<HTMLButtonElement>(null)
   const confirmBox = useRef<HTMLDivElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
   const lastPhase = useRef<Phase>(phase)
   const questionId = useId()
 
@@ -125,6 +128,14 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
     lastPhase.current = phase
   }, [phase])
 
+  // Opened from step 0's "Start step 1": the button that had focus is gone, so start the new
+  // step from its heading. Tab clicks pass false and keep focus on the tab.
+  useEffect(() => {
+    if (!focusHeading) return
+    window.scrollTo(0, 0)
+    heading.current?.focus({ preventScroll: true })
+  }, [focusHeading])
+
   // Leaving the step (the parent remounts us per step) stops the click and keeps the time.
   // A layout effect, so this cleanup runs inside the commit that swaps screens: the shared
   // metronome is stopped before the next screen can be clicked, never after its Start.
@@ -149,7 +160,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   return (
     <main className="practice">
       <section className="brief">
-        <h2>
+        <h2 ref={heading} tabIndex={-1}>
           Step {step}: {info.label}
         </h2>
         <p>{info.instructions}</p>
