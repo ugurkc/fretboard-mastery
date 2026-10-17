@@ -11,3 +11,15 @@ describe('beatsInWindow', () => {
     expect(beatsInWindow(3, 2.9, 0.5)).toEqual([])
   })
 })
+
+describe('beatsInWindow with a bad beat length', () => {
+  it('returns nothing for non-finite beat lengths', () => {
+    expect(beatsInWindow(1, 2, Number.NaN)).toEqual([])
+    expect(beatsInWindow(1, 2, Number.POSITIVE_INFINITY)).toEqual([])
+  })
+
+  it('returns nothing for zero or negative beat lengths', () => {
+    expect(beatsInWindow(1, 2, 0)).toEqual([])
+    expect(beatsInWindow(1, 2, -1)).toEqual([])
+  })
+})
