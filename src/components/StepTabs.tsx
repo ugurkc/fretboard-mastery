@@ -21,6 +21,7 @@ export function StepTabs({ progress, onOpen }: Props) {
             type="button"
             className={classes.filter(Boolean).join(' ')}
             aria-current={current ? 'step' : undefined}
+            aria-label={`Step ${step}: ${STEP_INFO[step].label}${done ? ', done' : locked ? ', locked' : ''}`}
             onClick={() => onOpen(step)}
           >
             <span className="step-num">{done ? '✓' : step}</span>
