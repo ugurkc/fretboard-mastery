@@ -1,5 +1,7 @@
 export const NATURALS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const
 export const ACCIDENTALS = ['C#', 'Db', 'D#', 'Eb', 'F#', 'Gb', 'G#', 'Ab', 'A#', 'Bb'] as const
+/** One name per black-key pitch: the step 0 chips. */
+export const SHARPS = ['C#', 'D#', 'F#', 'G#', 'A#'] as const
 
 export type Natural = (typeof NATURALS)[number]
 export type Accidental = (typeof ACCIDENTALS)[number]
@@ -44,6 +46,21 @@ export function fretFor(note: NoteName, string: StringNumber, windowStart: numbe
 
 export function chartLabel(string: StringNumber, fret: number): string {
   return PITCH_LABELS[(OPEN_PITCH[string] + fret) % 12]
+}
+
+/** The chart label of the note's pitch, e.g. 'A' or 'C♯/D♭'. */
+export function pitchLabel(note: NoteName): string {
+  return PITCH_LABELS[pitchClass(note)]
+}
+
+export interface Position {
+  string: StringNumber
+  fret: number
+}
+
+/** Where `note` sits on each string, strings 1 to 6, inside the window starting at `windowStart`. */
+export function positionsOf(note: NoteName, windowStart: number): Position[] {
+  return STRINGS_DOWN.map((string) => ({ string, fret: fretFor(note, string, windowStart) }))
 }
 
 export function displayName(note: NoteName): string {

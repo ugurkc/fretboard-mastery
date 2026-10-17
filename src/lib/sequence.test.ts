@@ -39,7 +39,7 @@ describe('run', () => {
 
 describe('setBeats', () => {
   it('single-note exercises are three rounds of up then down', () => {
-    for (const exercise of [1, 2, 3] as const) {
+    for (const exercise of [1, 2] as const) {
       const beats = setBeats({ exercise, note: 'G' })
       expect(beats).toHaveLength(36)
       for (let round = 0; round < 3; round++) {
@@ -50,7 +50,7 @@ describe('setBeats', () => {
   })
 
   it('pairs play the first note up and the second down, three times', () => {
-    const beats = setBeats({ exercise: 4, pair: ['G', 'D'] })
+    const beats = setBeats({ exercise: 3, pair: ['G', 'D'] })
     expect(beats).toHaveLength(36)
     for (let round = 0; round < 3; round++) {
       expect(labels(beats.slice(round * 12, round * 12 + 12))).toEqual([...upLabels('G'), ...downLabels('D')])
@@ -60,7 +60,7 @@ describe('setBeats', () => {
 
   it('the shuffled set alternates direction note by note', () => {
     const order: NoteName[] = ['D', 'F', 'C', 'E', 'A', 'G', 'B']
-    const beats = setBeats({ exercise: 5, order })
+    const beats = setBeats({ exercise: 4, order })
     expect(beats).toHaveLength(42)
     order.forEach((note, i) => {
       const block = beats.slice(i * 6, i * 6 + 6)

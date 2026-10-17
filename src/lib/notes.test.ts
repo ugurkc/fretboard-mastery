@@ -4,6 +4,7 @@ import {
   MAX_WINDOW_START,
   MIN_WINDOW_START,
   NATURALS,
+  SHARPS,
   STRINGS_DOWN,
   WINDOW_SIZE,
   accidentalTip,
@@ -13,6 +14,8 @@ import {
   fretFor,
   isNoteName,
   pitchClass,
+  pitchLabel,
+  positionsOf,
 } from './notes'
 import type { NoteName, StringNumber } from './notes'
 
@@ -116,5 +119,68 @@ describe('clampWindowStart', () => {
     expect(clampWindowStart(99)).toBe(10)
     expect(clampWindowStart(2.5)).toBe(1)
     expect(clampWindowStart('3')).toBe(1)
+  })
+})
+
+describe('SHARPS', () => {
+  it('names each of the five black-key pitches once, as a sharp', () => {
+    expect(SHARPS).toEqual(['C#', 'D#', 'F#', 'G#', 'A#'])
+    for (const note of SHARPS) expect(ACCIDENTALS).toContain(note)
+    expect(SHARPS.map(pitchClass)).toEqual([1, 3, 6, 8, 10])
+  })
+})
+
+describe('pitchLabel', () => {
+  it('labels the pitch class the way the chart does', () => {
+    expect(pitchLabel('G')).toBe('G')
+    expect(pitchLabel('C#')).toBe('C♯/D♭')
+    expect(pitchLabel('Db')).toBe('C♯/D♭')
+    expect(pitchLabel('Bb')).toBe('A♯/B♭')
+    for (const note of ALL_NOTES) {
+      for (const string of STRINGS_DOWN) {
+        expect(pitchLabel(note)).toBe(chartLabel(string, fretFor(note, string, 1)))
+      }
+    }
+  })
+})
+
+describe('positionsOf', () => {
+  it('finds C on every string in frets 1-12', () => {
+    expect(positionsOf('C', 1)).toEqual([
+      { string: 1, fret: 8 },
+      { string: 2, fret: 1 },
+      { string: 3, fret: 5 },
+      { string: 4, fret: 10 },
+      { string: 5, fret: 3 },
+      { string: 6, fret: 8 },
+    ])
+  })
+
+  it('gives one position per string, strings 1 to 6, for every note and window', () => {
+    for (let start = MIN_WINDOW_START; start <= MAX_WINDOW_START; start++) {
+      for (const note of ALL_NOTES) {
+        const positions = positionsOf(note, start)
+        expect(positions).toHaveLength(6)
+        expect(positions.map((p) => p.string)).toEqual([1, 2, 3, 4, 5, 6])
+        for (const { string, fret } of positions) expect(fret).toBe(fretFor(note, string, start))
+      }
+    }
+  })
+
+  it('follows the window', () => {
+    expect(positionsOf('E', 5).map((p) => p.fret)).toEqual([12, 5, 9, 14, 7, 12])
+  })
+
+  it('gives enharmonics identical positions', () => {
+    const pairs: [NoteName, NoteName][] = [
+      ['C#', 'Db'],
+      ['D#', 'Eb'],
+      ['F#', 'Gb'],
+      ['G#', 'Ab'],
+      ['A#', 'Bb'],
+    ]
+    for (let start = MIN_WINDOW_START; start <= MAX_WINDOW_START; start++) {
+      for (const [sharp, flat] of pairs) expect(positionsOf(sharp, start)).toEqual(positionsOf(flat, start))
+    }
   })
 })

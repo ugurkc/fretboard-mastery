@@ -2,27 +2,28 @@ import { ACCIDENTALS, NATURALS, clampWindowStart } from './notes'
 import type { Accidental, Natural, NoteName } from './notes'
 import type { Exercise } from './sequence'
 
-export type StepId = 1 | 2 | 3 | 4 | 5 | 6
-export type TempoExercise = 2 | 3 | 4 | 5
+/** Step 0 is the positions study page; steps 1 to 5 are practice. */
+export type StepId = 0 | 1 | 2 | 3 | 4 | 5
+export type PracticeStep = Exclude<StepId, 0>
 
-export const STEPS: readonly StepId[] = [1, 2, 3, 4, 5, 6]
+export const STEPS: readonly StepId[] = [0, 1, 2, 3, 4, 5]
 export const BASE_BPM = 40
 export const TARGET_BPM = 80
 export const MIN_BPM = 40
 export const MAX_BPM = 160
 export const BPM_STEP = 4
+/** The key stays "v1" across data versions; the `version` field inside says which. */
 export const STORAGE_KEY = 'fretboard-mastery:v1'
 
 export interface Progress {
-  version: 1
+  version: 2
   currentStep: StepId
-  step1: { pass1: Natural[]; pass2: Natural[] }
-  step2: Natural[]
-  step3: Accidental[]
-  step4Easy: boolean
-  step5Clean: boolean
+  step1: Natural[]
+  step2: Accidental[]
+  step3Easy: boolean
+  step4Clean: boolean
   /** Best tempo with a clean set, per exercise; 0 = none yet. */
-  bestBpm: Record<TempoExercise, number>
+  bestBpm: Record<Exercise, number>
   windowStart: number
   chartVisible: boolean
   /** Seconds practised, keyed by local date YYYY-MM-DD. */
@@ -30,7 +31,7 @@ export interface Progress {
 }
 
 export type ProgressEvent =
-  | { type: 'cleanSet'; exercise: Exercise; note?: NoteName; bpm: number | null }
+  | { type: 'cleanSet'; exercise: Exercise; note?: NoteName; bpm: number }
   | { type: 'markEasy' }
   | { type: 'practiced'; date: string; seconds: number }
   | { type: 'setStep'; step: StepId }
@@ -45,14 +46,13 @@ export interface KeyValueStore {
 
 export function freshProgress(): Progress {
   return {
-    version: 1,
-    currentStep: 1,
-    step1: { pass1: [], pass2: [] },
+    version: 2,
+    currentStep: 0,
+    step1: [],
     step2: [],
-    step3: [],
-    step4Easy: false,
-    step5Clean: false,
-    bestBpm: { 2: 0, 3: 0, 4: 0, 5: 0 },
+    step3Easy: false,
+    step4Clean: false,
+    bestBpm: { 1: 0, 2: 0, 3: 0, 4: 0 },
     windowStart: 1,
     chartVisible: false,
     practiceSeconds: {},
@@ -66,29 +66,19 @@ function addUnique<T>(list: T[], item: T): T[] {
   return list.includes(item) ? list : [...list, item]
 }
 
-export function step1Pass(p: Progress): 1 | 2 {
-  return p.step1.pass1.length < NATURALS.length ? 1 : 2
-}
-
-/** Notes already ticked off for the exercise (step 1: the current pass). */
-export function doneItems(p: Progress, exercise: 1 | 2 | 3): readonly NoteName[] {
-  if (exercise === 1) return step1Pass(p) === 1 ? p.step1.pass1 : p.step1.pass2
-  return exercise === 2 ? p.step2 : p.step3
+/** Notes already ticked off for the exercise. */
+export function doneItems(p: Progress, exercise: 1 | 2): readonly NoteName[] {
+  return exercise === 1 ? p.step1 : p.step2
 }
 
 function applyCleanSet(p: Progress, e: Extract<ProgressEvent, { type: 'cleanSet' }>): Progress {
   const { exercise, note, bpm } = e
-  if (exercise === 1) {
-    if (!isNaturalName(note)) return p
-    const key = step1Pass(p) === 1 ? 'pass1' : 'pass2'
-    return { ...p, step1: { ...p.step1, [key]: addUnique(p.step1[key], note) } }
-  }
-  if (bpm === null || !Number.isFinite(bpm) || bpm <= 0) return p
+  if (!Number.isFinite(bpm) || bpm <= 0) return p
   const next: Progress = { ...p, bestBpm: { ...p.bestBpm, [exercise]: Math.max(p.bestBpm[exercise], bpm) } }
   if (bpm < BASE_BPM) return next
-  if (exercise === 2 && isNaturalName(note)) next.step2 = addUnique(p.step2, note)
-  if (exercise === 3 && isAccidentalName(note)) next.step3 = addUnique(p.step3, note)
-  if (exercise === 5) next.step5Clean = true
+  if (exercise === 1 && isNaturalName(note)) next.step1 = addUnique(p.step1, note)
+  if (exercise === 2 && isAccidentalName(note)) next.step2 = addUnique(p.step2, note)
+  if (exercise === 4) next.step4Clean = true
   return next
 }
 
@@ -97,7 +87,7 @@ export function reduce(p: Progress, e: ProgressEvent): Progress {
     case 'cleanSet':
       return applyCleanSet(p, e)
     case 'markEasy':
-      return { ...p, step4Easy: true }
+      return { ...p, step3Easy: true }
     case 'practiced': {
       if (!Number.isFinite(e.seconds) || e.seconds <= 0) return p
       const total = (p.practiceSeconds[e.date] ?? 0) + e.seconds
@@ -121,45 +111,42 @@ export function reduce(p: Progress, e: ProgressEvent): Progress {
 
 export function isStepComplete(p: Progress, step: StepId): boolean {
   switch (step) {
+    case 0:
+      return true
     case 1:
-      return p.step1.pass1.length === NATURALS.length && p.step1.pass2.length === NATURALS.length
+      return p.step1.length === NATURALS.length
     case 2:
-      return p.step2.length === NATURALS.length
+      return p.step2.length === ACCIDENTALS.length
     case 3:
-      return p.step3.length === ACCIDENTALS.length
+      return p.step3Easy
     case 4:
-      return p.step4Easy
+      return p.step4Clean
     case 5:
-      return p.step5Clean
-    case 6:
-      return p.bestBpm[5] >= TARGET_BPM
+      return p.bestBpm[4] >= TARGET_BPM
   }
 }
 
+/** Step 0 never gates: a step opens when every practice step before it is complete. */
 export function isUnlocked(p: Progress, step: StepId): boolean {
-  return STEPS.filter((s) => s < step).every((s) => isStepComplete(p, s))
-}
-
-export function recommendedStep(p: Progress): StepId {
-  return STEPS.find((s) => !isStepComplete(p, s)) ?? 6
+  return STEPS.filter((s) => s > 0 && s < step).every((s) => isStepComplete(p, s))
 }
 
 export function stepProgressText(p: Progress, step: StepId): string {
-  if (step !== 6 && isStepComplete(p, step)) return 'Done'
+  if (step !== 0 && step !== 5 && isStepComplete(p, step)) return 'Done'
   switch (step) {
+    case 0:
+      return 'A study page: nothing to tick off'
     case 1:
-      return `Pass ${step1Pass(p)}: ${doneItems(p, 1).length}/${NATURALS.length} notes`
+      return `${p.step1.length}/${NATURALS.length} notes clean at ${BASE_BPM} BPM`
     case 2:
-      return `${p.step2.length}/${NATURALS.length} notes clean at ${BASE_BPM} BPM`
+      return `${p.step2.length}/${ACCIDENTALS.length} sharps and flats clean at ${BASE_BPM} BPM`
     case 3:
-      return `${p.step3.length}/${ACCIDENTALS.length} sharps and flats clean at ${BASE_BPM} BPM`
-    case 4:
       return 'Not marked easy yet'
-    case 5:
+    case 4:
       return 'No clean pass yet'
-    case 6: {
-      const best = p.bestBpm[5]
-      return `Best clean step-5 tempo: ${best ? `${best} BPM` : 'none yet'} (target ${TARGET_BPM} BPM)`
+    case 5: {
+      const best = p.bestBpm[4]
+      return `Best clean step-4 tempo: ${best ? `${best} BPM` : 'none yet'} (target ${TARGET_BPM} BPM)`
     }
   }
 }
@@ -205,20 +192,42 @@ function secondsMap(v: unknown): Record<string, number> {
   return out
 }
 
-function sanitize(raw: unknown): Progress {
+/**
+ * Version 1 had a self-paced step 1 and steps 2-6. Its step 1 (pass1/pass2) is dropped; steps
+ * 2-6 become 1-5, with old step 1 landing on the new step 0. The result is still unchecked:
+ * sanitize validates it like any version-2 record.
+ */
+function migrateV1(raw: Record<string, unknown>): Record<string, unknown> {
+  const best = isRecord(raw.bestBpm) ? raw.bestBpm : {}
+  const step = raw.currentStep
+  return {
+    version: 2,
+    currentStep: typeof step === 'number' ? Math.max(0, step - 1) : step,
+    step1: raw.step2,
+    step2: raw.step3,
+    step3Easy: raw.step4Easy,
+    step4Clean: raw.step5Clean,
+    bestBpm: { 1: best[2], 2: best[3], 3: best[4], 4: best[5] },
+    windowStart: raw.windowStart,
+    chartVisible: raw.chartVisible,
+    practiceSeconds: raw.practiceSeconds,
+  }
+}
+
+function sanitize(stored: unknown): Progress {
   const base = freshProgress()
-  if (!isRecord(raw) || raw.version !== 1) return base
-  const step1 = isRecord(raw.step1) ? raw.step1 : {}
+  if (!isRecord(stored)) return base
+  const raw = stored.version === 1 ? migrateV1(stored) : stored
+  if (raw.version !== 2) return base
   const best = isRecord(raw.bestBpm) ? raw.bestBpm : {}
   return {
-    version: 1,
+    version: 2,
     currentStep: (STEPS as readonly unknown[]).includes(raw.currentStep) ? (raw.currentStep as StepId) : base.currentStep,
-    step1: { pass1: pick(step1.pass1, NATURALS), pass2: pick(step1.pass2, NATURALS) },
-    step2: pick(raw.step2, NATURALS),
-    step3: pick(raw.step3, ACCIDENTALS),
-    step4Easy: raw.step4Easy === true,
-    step5Clean: raw.step5Clean === true,
-    bestBpm: { 2: bpmValue(best[2]), 3: bpmValue(best[3]), 4: bpmValue(best[4]), 5: bpmValue(best[5]) },
+    step1: pick(raw.step1, NATURALS),
+    step2: pick(raw.step2, ACCIDENTALS),
+    step3Easy: raw.step3Easy === true,
+    step4Clean: raw.step4Clean === true,
+    bestBpm: { 1: bpmValue(best[1]), 2: bpmValue(best[2]), 3: bpmValue(best[3]), 4: bpmValue(best[4]) },
     windowStart: clampWindowStart(raw.windowStart),
     chartVisible: raw.chartVisible === true,
     practiceSeconds: secondsMap(raw.practiceSeconds),
