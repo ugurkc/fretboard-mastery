@@ -14,8 +14,17 @@ import {
   isNoteName,
   pitchClass,
 } from './notes'
+import type { NoteName, StringNumber } from './notes'
 
 const ALL_NOTES = [...NATURALS, ...ACCIDENTALS]
+const OPEN: [StringNumber, NoteName][] = [
+  [6, 'E'],
+  [5, 'A'],
+  [4, 'D'],
+  [3, 'G'],
+  [2, 'B'],
+  [1, 'E'],
+]
 
 describe('pitchClass', () => {
   it('maps naturals and enharmonic pairs', () => {
@@ -37,6 +46,13 @@ describe('fretFor', () => {
     expect(fretFor('D', 1, 1)).toBe(10)
   })
 
+  it('fret 12 on each string is the open note', () => {
+    for (const [s, n] of OPEN) {
+      expect(chartLabel(s, 12)).toBe(n)
+      expect(fretFor(n, s, 1)).toBe(12)
+    }
+  })
+
   it('puts sharps one fret above and flats one fret below their natural', () => {
     expect(fretFor('A#', 6, 1)).toBe(fretFor('A', 6, 1) + 1)
     expect(fretFor('Bb', 6, 1)).toBe(fretFor('B', 6, 1) - 1)
@@ -54,7 +70,7 @@ describe('fretFor', () => {
           const fret = fretFor(note, string, start)
           expect(fret).toBeGreaterThanOrEqual(start)
           expect(fret).toBeLessThan(start + WINDOW_SIZE)
-          expect(chartLabel(string, fret)).toContain(displayName(note))
+          expect(chartLabel(string, fret).split('/')).toContain(displayName(note))
         }
       }
     }
