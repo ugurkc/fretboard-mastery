@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ACCIDENTALS, NATURALS } from './notes'
 import type { NoteName } from './notes'
 import {
+  MAX_BPM,
   STEPS,
   STORAGE_KEY,
   TARGET_BPM,
@@ -79,8 +80,13 @@ describe('step 1', () => {
 
 describe('steps 2 and 3', () => {
   it('step 2 counts naturals only at 40 BPM or faster', () => {
-    const p = apply(freshProgress(), [...clean(2, ['A'], 36), ...clean(2, ['B'], 40), ...clean(2, ['C#'], 40)])
+    const p = apply(freshProgress(), [...clean(2, ['A'], 39), ...clean(2, ['B'], 40), ...clean(2, ['C#'], 40)])
     expect(p.step2).toEqual(['B'])
+  })
+
+  it('step 3 does not tick below 40 BPM', () => {
+    const p = apply(freshProgress(), clean(3, ['A#'], 39))
+    expect(p.step3).toEqual([])
   })
 
   it('step 3 counts accidentals only and completes at ten', () => {
@@ -101,8 +107,27 @@ describe('steps 4 to 6', () => {
     expect(isStepComplete(p, 5)).toBe(true)
   })
 
+  it('step 5 stays incomplete below 40 but records the tempo', () => {
+    const p = reduce(freshProgress(), { type: 'cleanSet', exercise: 5, bpm: 39 })
+    expect(isStepComplete(p, 5)).toBe(false)
+    expect(p.bestBpm[5]).toBe(39)
+  })
+
+  it('ignores clean sets with a non-finite or non-positive tempo', () => {
+    const before = freshProgress()
+    for (const bpm of [Number.NaN, Number.POSITIVE_INFINITY, 0, -40]) {
+      const p = apply(before, [
+        ...clean(2, ['A'], bpm),
+        ...clean(3, ['A#'], bpm),
+        { type: 'cleanSet', exercise: 4, bpm },
+        { type: 'cleanSet', exercise: 5, bpm },
+      ])
+      expect(p).toEqual(before)
+    }
+  })
+
   it('step 6 needs step 5 clean at 80', () => {
-    let p = reduce(freshProgress(), { type: 'cleanSet', exercise: 5, bpm: 76 })
+    let p = reduce(freshProgress(), { type: 'cleanSet', exercise: 5, bpm: 79 })
     expect(isStepComplete(p, 6)).toBe(false)
     p = reduce(p, { type: 'cleanSet', exercise: 5, bpm: 80 })
     expect(isStepComplete(p, 6)).toBe(true)
@@ -153,15 +178,24 @@ describe('settings and time', () => {
     expect(p.chartVisible).toBe(true)
   })
 
-  it('reset clears progress but keeps settings', () => {
+  it('reset clears progress but keeps settings and the practice log', () => {
     let p = apply(throughStep(3), [
       { type: 'setWindowStart', windowStart: 5 },
       { type: 'toggleChart' },
+      { type: 'setStep', step: 3 },
+      { type: 'practiced', date: '2026-10-17', seconds: 300 },
     ])
     p = reduce(p, { type: 'reset' })
-    expect(isStepComplete(p, 1)).toBe(false)
-    expect(p.windowStart).toBe(5)
-    expect(p.chartVisible).toBe(true)
+    expect(p).toEqual({
+      ...freshProgress(),
+      windowStart: 5,
+      chartVisible: true,
+      practiceSeconds: { '2026-10-17': 300 },
+    })
+  })
+
+  it('allows opening a locked step', () => {
+    expect(reduce(freshProgress(), { type: 'setStep', step: 5 }).currentStep).toBe(5)
   })
 })
 
@@ -178,6 +212,8 @@ describe('helpers', () => {
   it('describes step progress', () => {
     expect(stepProgressText(apply(freshProgress(), clean(1, ['A', 'B'], null)), 1)).toBe('Pass 1: 2/7 notes')
     expect(stepProgressText(throughStep(1), 1)).toBe('Done')
+    expect(stepProgressText(freshProgress(), 2)).toBe('0/7 notes clean at 40 BPM')
+    expect(stepProgressText(freshProgress(), 3)).toBe('0/10 sharps and flats clean at 40 BPM')
     expect(stepProgressText(freshProgress(), 6)).toBe('Best clean step-5 tempo: none yet (target 80 BPM)')
   })
 })
@@ -195,6 +231,12 @@ describe('storage', () => {
     expect(loadProgress(store)).toEqual(p)
   })
 
+  it('keeps a locked current step through save and load', () => {
+    const store = memoryStore()
+    saveProgress(store, { ...freshProgress(), currentStep: 5 })
+    expect(loadProgress(store).currentStep).toBe(5)
+  })
+
   it('falls back to fresh progress on corrupt JSON or an unknown version', () => {
     expect(loadProgress(memoryStore('{not json'))).toEqual(freshProgress())
     expect(loadProgress(memoryStore(JSON.stringify({ ...throughStep(2), version: 2 })))).toEqual(freshProgress())
@@ -205,17 +247,30 @@ describe('storage', () => {
     const raw = {
       ...freshProgress(),
       currentStep: 9,
+      step1: { pass1: ['C', 'C#', 'X', null, 'D'], pass2: 'nope' },
       step2: ['A', 'A', 'H', 'C#', 7],
+      step3: ['A#', 'A', 'Bb', 'Z#', {}, 'A#'],
+      step4Easy: 'true',
       bestBpm: { 2: 'fast', 3: -10, 4: 52, 5: 61.6 },
       windowStart: 'x',
-      practiceSeconds: { '2026-10-17': 60, nope: 5, '2026-10-16': -1 },
+      practiceSeconds: { '2026-10-17': 60, nope: 5, '2026-10-16': -1, '2026-10-15': 86401 },
     }
     const p = loadProgress(memoryStore(JSON.stringify(raw)))
     expect(p.currentStep).toBe(1)
+    expect(p.step1).toEqual({ pass1: ['C', 'D'], pass2: [] })
     expect(p.step2).toEqual(['A'])
-    expect(p.bestBpm).toEqual({ 2: 0, 3: 0, 4: 52, 5: 62 })
+    expect(p.step3).toEqual(['A#', 'Bb'])
+    expect(p.step4Easy).toBe(false)
+    expect(p.bestBpm).toEqual({ 2: 0, 3: 0, 4: 52, 5: 61 })
     expect(p.windowStart).toBe(1)
     expect(p.practiceSeconds).toEqual({ '2026-10-17': 60 })
+  })
+
+  it('caps stored tempos and rounds them down', () => {
+    const raw = { ...freshProgress(), bestBpm: { 2: 1e308, 3: 79.5, 4: 160.9, 5: 0 } }
+    const p = loadProgress(memoryStore(JSON.stringify(raw)))
+    expect(p.bestBpm).toEqual({ 2: MAX_BPM, 3: 79, 4: MAX_BPM, 5: 0 })
+    expect(isStepComplete({ ...p, bestBpm: { ...p.bestBpm, 5: 79 } }, 6)).toBe(false)
   })
 
   it('never throws when storage itself throws', () => {

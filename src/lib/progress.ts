@@ -83,7 +83,7 @@ function applyCleanSet(p: Progress, e: Extract<ProgressEvent, { type: 'cleanSet'
     const key = step1Pass(p) === 1 ? 'pass1' : 'pass2'
     return { ...p, step1: { ...p.step1, [key]: addUnique(p.step1[key], note) } }
   }
-  if (bpm === null) return p
+  if (bpm === null || !Number.isFinite(bpm) || bpm <= 0) return p
   const next: Progress = { ...p, bestBpm: { ...p.bestBpm, [exercise]: Math.max(p.bestBpm[exercise], bpm) } }
   if (bpm < BASE_BPM) return next
   if (exercise === 2 && isNaturalName(note)) next.step2 = addUnique(p.step2, note)
@@ -110,7 +110,12 @@ export function reduce(p: Progress, e: ProgressEvent): Progress {
     case 'toggleChart':
       return { ...p, chartVisible: !p.chartVisible }
     case 'reset':
-      return { ...freshProgress(), windowStart: p.windowStart, chartVisible: p.chartVisible }
+      return {
+        ...freshProgress(),
+        windowStart: p.windowStart,
+        chartVisible: p.chartVisible,
+        practiceSeconds: p.practiceSeconds,
+      }
   }
 }
 
@@ -143,11 +148,11 @@ export function stepProgressText(p: Progress, step: StepId): string {
   if (step !== 6 && isStepComplete(p, step)) return 'Done'
   switch (step) {
     case 1:
-      return `Pass ${step1Pass(p)}: ${doneItems(p, 1).length}/7 notes`
+      return `Pass ${step1Pass(p)}: ${doneItems(p, 1).length}/${NATURALS.length} notes`
     case 2:
-      return `${p.step2.length}/7 notes clean at 40 BPM`
+      return `${p.step2.length}/${NATURALS.length} notes clean at ${BASE_BPM} BPM`
     case 3:
-      return `${p.step3.length}/10 sharps and flats clean at 40 BPM`
+      return `${p.step3.length}/${ACCIDENTALS.length} sharps and flats clean at ${BASE_BPM} BPM`
     case 4:
       return 'Not marked easy yet'
     case 5:
@@ -184,14 +189,16 @@ function pick<T>(value: unknown, allowed: readonly T[]): T[] {
 }
 
 function bpmValue(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 0
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(MAX_BPM, Math.floor(v)) : 0
 }
+
+const SECONDS_PER_DAY = 86400
 
 function secondsMap(v: unknown): Record<string, number> {
   if (!isRecord(v)) return {}
   const out: Record<string, number> = {}
   for (const [date, secs] of Object.entries(v)) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && typeof secs === 'number' && Number.isFinite(secs) && secs >= 0) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && typeof secs === 'number' && Number.isFinite(secs) && secs >= 0 && secs <= SECONDS_PER_DAY) {
       out[date] = secs
     }
   }
