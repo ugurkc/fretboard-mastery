@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch } from 'react'
 import { ACCIDENTALS, NATURALS, displayName } from '../lib/notes'
 import type { NoteName } from '../lib/notes'
@@ -22,6 +22,8 @@ import { StringLadder } from './StringLadder'
 
 const COUNT_IN = 4
 const DRILLS: readonly TempoExercise[] = [2, 3, 4, 5]
+// One for the whole app, so step changes don't each open an AudioContext (made on first start).
+const metronome = new Metronome()
 
 type Phase = 'idle' | 'running' | 'confirm'
 
@@ -44,9 +46,9 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [index, setIndex] = useState(0)
-  const metronome = useRef<Metronome | null>(null)
   const startedAt = useRef<number | null>(null)
   const nextButton = useRef<HTMLButtonElement>(null)
+  const yesButton = useRef<HTMLButtonElement>(null)
 
   const pool: readonly NoteName[] = exercise === 3 ? ACCIDENTALS : NATURALS
   const done: readonly NoteName[] =
@@ -82,8 +84,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
       return
     }
     setIndex(-COUNT_IN)
-    metronome.current ??= new Metronome()
-    metronome.current.start({
+    metronome.start({
       bpm: tempo,
       countIn: COUNT_IN,
       totalBeats: beats.length,
@@ -94,7 +95,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   }
 
   function stop() {
-    metronome.current?.stop()
+    metronome.stop()
     logPractice()
     setPhase('idle')
   }
@@ -135,10 +136,16 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
     if (running && exercise === 1) nextButton.current?.focus()
   }, [running, exercise])
 
+  useEffect(() => {
+    if (phase === 'confirm') yesButton.current?.focus()
+  }, [phase])
+
   // Leaving the step (the parent remounts us per step) stops the click and keeps the time.
-  useEffect(
+  // A layout effect, so this cleanup runs inside the commit that swaps screens: the shared
+  // metronome is stopped before the next screen can be clicked, never after its Start.
+  useLayoutEffect(
     () => () => {
-      metronome.current?.stop()
+      metronome.stop()
       logPractice()
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount only; logPractice reads refs
@@ -300,7 +307,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
             <p className="cue-main cue-question">Was that clean?</p>
             <p className="cue-next">Every string in order, no wrong notes, no pauses.</p>
             <div className="confirm-buttons">
-              <button type="button" className="primary" onClick={() => answer(true)}>
+              <button type="button" ref={yesButton} className="primary" onClick={() => answer(true)}>
                 Yes, clean
               </button>
               <button type="button" onClick={() => answer(false)}>
