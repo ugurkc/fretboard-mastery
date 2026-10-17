@@ -114,6 +114,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
       bpm: exercise === 1 ? null : tempo,
     })
     if (step !== 6) setChosenNote(null) // move on to the next unticked note
+    else if (exercise <= 3) setChosenNote(note) // same note again, faster; ticking it must not move us on
     if (exercise === 5) setOrder(shuffled(NATURALS))
     if (step === 6) setBpm(suggestNextBpm(tempo))
   }
