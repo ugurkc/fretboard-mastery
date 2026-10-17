@@ -1,13 +1,13 @@
-import { STRINGS_DOWN, STRINGS_UP } from './notes'
+import { pitchClass, STRINGS_DOWN, STRINGS_UP } from './notes'
 import type { NoteName, StringNumber } from './notes'
 
 export type Direction = 'up' | 'down'
 export type Exercise = 1 | 2 | 3 | 4 | 5
 
 export interface Beat {
-  note: NoteName
-  string: StringNumber
-  direction: Direction
+  readonly note: NoteName
+  readonly string: StringNumber
+  readonly direction: Direction
 }
 
 export const ROUNDS_PER_SET = 3
@@ -50,6 +50,10 @@ export function shuffled<T>(items: readonly T[], rng: () => number = Math.random
 }
 
 export function randomPair(pool: readonly NoteName[], rng: () => number = Math.random): [NoteName, NoteName] {
-  const [a, b] = shuffled(pool, rng)
-  return [a, b]
+  const [first, ...rest] = shuffled(pool, rng)
+  const second = rest.find((note) => pitchClass(note) !== pitchClass(first))
+  if (first === undefined || second === undefined) {
+    throw new RangeError('randomPair needs two notes with different pitches')
+  }
+  return [first, second]
 }
