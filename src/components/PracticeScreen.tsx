@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch } from 'react'
-import { ACCIDENTALS, NATURALS, displayName } from '../lib/notes'
+import { ACCIDENTALS, NATURALS, displayName, isNatural, pitchClass } from '../lib/notes'
 import type { NoteName } from '../lib/notes'
 import { BEATS_PER_RUN, randomPair, setBeats, shuffled } from '../lib/sequence'
 import type { Exercise, SetConfig } from '../lib/sequence'
@@ -27,6 +27,8 @@ const metronome = new Metronome()
 
 type Phase = 'idle' | 'running' | 'confirm'
 
+const clampBpm = (bpm: number) => Math.min(MAX_BPM, Math.max(MIN_BPM, bpm))
+
 interface Props {
   step: StepId
   progress: Progress
@@ -36,7 +38,7 @@ interface Props {
 export function PracticeScreen({ step, progress, dispatch }: Props) {
   const [drill, setDrill] = useState<TempoExercise>(2)
   const exercise: Exercise = step === 6 ? drill : step
-  const [bpm, setBpm] = useState(BASE_BPM)
+  const [bpm, setBpm] = useState(() => clampBpm(progress.bestBpm[2] || BASE_BPM))
   const tempo = step === 6 ? bpm : BASE_BPM
 
   const [chosenNote, setChosenNote] = useState<NoteName | null>(null)
@@ -48,7 +50,11 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   const [index, setIndex] = useState(0)
   const startedAt = useRef<number | null>(null)
   const nextButton = useRef<HTMLButtonElement>(null)
-  const yesButton = useRef<HTMLButtonElement>(null)
+  const stopButton = useRef<HTMLButtonElement>(null)
+  const startButton = useRef<HTMLButtonElement>(null)
+  const confirmBox = useRef<HTMLDivElement>(null)
+  const lastPhase = useRef<Phase>(phase)
+  const questionId = useId()
 
   const pool: readonly NoteName[] = exercise === 3 ? ACCIDENTALS : NATURALS
   const done: readonly NoteName[] =
@@ -120,29 +126,42 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
     if (step === 6) setBpm(suggestNextBpm(tempo))
   }
 
-  // Step 1: Space advances. A focused button handles Space itself, so skip those.
+  // Step 1: Space advances, wherever focus is, except on Next (its own click advances) and
+  // form fields. Only while running, so it is off during the clean prompt.
   useEffect(() => {
     if (!running || exercise !== 1) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat || e.target instanceof HTMLButtonElement) return
+      const t = e.target
+      if (
+        e.code !== 'Space' ||
+        t === nextButton.current ||
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLSelectElement ||
+        t instanceof HTMLTextAreaElement
+      )
+        return
       e.preventDefault()
-      advance()
+      if (!e.repeat) advance()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // Keep focus on the control that matters for the phase. The clean prompt focuses its group,
+  // not "Yes", so a stray Space or Enter can't record a clean set. Start is refocused only on
+  // returning to idle, never on first mount, so loading the page doesn't move focus.
   useEffect(() => {
-    if (running && exercise === 1) nextButton.current?.focus()
-  }, [running, exercise])
-
-  useEffect(() => {
-    if (phase === 'confirm') yesButton.current?.focus()
-  }, [phase])
+    if (phase === 'running') (exercise === 1 ? nextButton : stopButton).current?.focus()
+    else if (phase === 'confirm') confirmBox.current?.focus()
+    else if (lastPhase.current !== 'idle') startButton.current?.focus()
+    lastPhase.current = phase
+  }, [phase, exercise])
 
   // Leaving the step (the parent remounts us per step) stops the click and keeps the time.
   // A layout effect, so this cleanup runs inside the commit that swaps screens: the shared
   // metronome is stopped before the next screen can be clicked, never after its Start.
+  // It captures the first render's logPractice and dispatch; that is safe because App passes
+  // useReducer's dispatch, which is stable.
   useLayoutEffect(
     () => () => {
       metronome.stop()
@@ -186,7 +205,10 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
                   className={d === drill ? 'chip is-selected' : 'chip'}
                   aria-pressed={d === drill}
                   disabled={busy}
-                  onClick={() => setDrill(d)}
+                  onClick={() => {
+                    setDrill(d)
+                    setBpm(clampBpm(progress.bestBpm[d] || BASE_BPM))
+                  }}
                 >
                   Step {d}
                 </button>
@@ -243,7 +265,14 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
               <select
                 value={pair[0]}
                 disabled={busy}
-                onChange={(e) => setPair([e.target.value as NoteName, pair[1]])}
+                onChange={(e) => {
+                  const up = e.target.value as NoteName
+                  const down =
+                    pitchClass(up) === pitchClass(pair[1])
+                      ? (pairPool.find((n) => pitchClass(n) !== pitchClass(up)) ?? pair[1])
+                      : pair[1]
+                  setPair([up, down])
+                }}
               >
                 {pairPool.map((n) => (
                   <option key={n} value={n}>
@@ -259,11 +288,13 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
                 disabled={busy}
                 onChange={(e) => setPair([pair[0], e.target.value as NoteName])}
               >
-                {pairPool.map((n) => (
-                  <option key={n} value={n}>
-                    {displayName(n)}
-                  </option>
-                ))}
+                {pairPool
+                  .filter((n) => pitchClass(n) !== pitchClass(pair[0]))
+                  .map((n) => (
+                    <option key={n} value={n}>
+                      {displayName(n)}
+                    </option>
+                  ))}
               </select>
             </label>
             <button type="button" disabled={busy} onClick={() => setPair(randomPair(pairPool))}>
@@ -276,7 +307,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
                 disabled={busy}
                 onChange={(e) => {
                   setWithAccidentals(e.target.checked)
-                  if (!e.target.checked) setPair(randomPair(NATURALS))
+                  if (!e.target.checked && !pair.every(isNatural)) setPair(randomPair(NATURALS))
                 }}
               />{' '}
               Include sharps and flats
@@ -303,11 +334,13 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
 
       <section className="stage">
         {phase === 'confirm' ? (
-          <div className="cue confirm">
-            <p className="cue-main cue-question">Was that clean?</p>
+          <div className="cue confirm" ref={confirmBox} tabIndex={-1} role="group" aria-labelledby={questionId}>
+            <p id={questionId} className="cue-main cue-question">
+              Was that clean?
+            </p>
             <p className="cue-next">Every string in order, no wrong notes, no pauses.</p>
             <div className="confirm-buttons">
-              <button type="button" ref={yesButton} className="primary" onClick={() => answer(true)}>
+              <button type="button" className="primary" onClick={() => answer(true)}>
                 Yes, clean
               </button>
               <button type="button" onClick={() => answer(false)}>
@@ -323,7 +356,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
 
       <div className="actions">
         {phase === 'idle' && (
-          <button type="button" className="primary" onClick={start}>
+          <button type="button" ref={startButton} className="primary" onClick={start}>
             Start
           </button>
         )}
@@ -333,7 +366,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
           </button>
         )}
         {running && (
-          <button type="button" onClick={stop}>
+          <button type="button" ref={stopButton} onClick={stop}>
             Stop
           </button>
         )}
