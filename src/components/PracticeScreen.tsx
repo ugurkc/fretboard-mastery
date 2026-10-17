@@ -14,14 +14,14 @@ import {
   stepProgressText,
   suggestNextBpm,
 } from '../lib/progress'
-import type { Progress, ProgressEvent, StepId, TempoExercise } from '../lib/progress'
+import type { PracticeStep, Progress, ProgressEvent } from '../lib/progress'
 import { STEP_INFO } from '../lib/steps'
 import { Metronome } from '../lib/metronome'
 import { Cue } from './Cue'
 import { StringLadder } from './StringLadder'
 
 const COUNT_IN = 4
-const DRILLS: readonly TempoExercise[] = [2, 3, 4, 5]
+const DRILLS: readonly Exercise[] = [1, 2, 3, 4]
 // One for the whole app, so step changes don't each open an AudioContext (made on first start).
 const metronome = new Metronome()
 
@@ -30,16 +30,16 @@ type Phase = 'idle' | 'running' | 'confirm'
 const clampBpm = (bpm: number) => Math.min(MAX_BPM, Math.max(MIN_BPM, bpm))
 
 interface Props {
-  step: StepId
+  step: PracticeStep
   progress: Progress
   dispatch: Dispatch<ProgressEvent>
 }
 
 export function PracticeScreen({ step, progress, dispatch }: Props) {
-  const [drill, setDrill] = useState<TempoExercise>(2)
-  const exercise: Exercise = step === 6 ? drill : step
-  const [bpm, setBpm] = useState(() => clampBpm(progress.bestBpm[2] || BASE_BPM))
-  const tempo = step === 6 ? bpm : BASE_BPM
+  const [drill, setDrill] = useState<Exercise>(1)
+  const exercise: Exercise = step === 5 ? drill : step
+  const [bpm, setBpm] = useState(() => clampBpm(progress.bestBpm[1] || BASE_BPM))
+  const tempo = step === 5 ? bpm : BASE_BPM
 
   const [chosenNote, setChosenNote] = useState<NoteName | null>(null)
   const [withAccidentals, setWithAccidentals] = useState(false)
@@ -49,22 +49,20 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [index, setIndex] = useState(0)
   const startedAt = useRef<number | null>(null)
-  const nextButton = useRef<HTMLButtonElement>(null)
   const stopButton = useRef<HTMLButtonElement>(null)
   const startButton = useRef<HTMLButtonElement>(null)
   const confirmBox = useRef<HTMLDivElement>(null)
   const lastPhase = useRef<Phase>(phase)
   const questionId = useId()
 
-  const pool: readonly NoteName[] = exercise === 3 ? ACCIDENTALS : NATURALS
-  const done: readonly NoteName[] =
-    exercise === 1 || exercise === 2 || exercise === 3 ? doneItems(progress, exercise) : []
+  const pool: readonly NoteName[] = exercise === 2 ? ACCIDENTALS : NATURALS
+  const done: readonly NoteName[] = exercise === 1 || exercise === 2 ? doneItems(progress, exercise) : []
   const note =
     chosenNote && pool.includes(chosenNote) ? chosenNote : (pool.find((n) => !done.includes(n)) ?? pool[0])
   const pairPool: readonly NoteName[] = withAccidentals ? [...NATURALS, ...ACCIDENTALS] : NATURALS
 
   const config: SetConfig =
-    exercise === 4 ? { exercise, pair } : exercise === 5 ? { exercise, order } : { exercise, note }
+    exercise === 3 ? { exercise, pair } : exercise === 4 ? { exercise, order } : { exercise, note }
   const beats = setBeats(config)
 
   const busy = phase !== 'idle'
@@ -85,10 +83,6 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
   function start() {
     startedAt.current = Date.now()
     setPhase('running')
-    if (exercise === 1) {
-      setIndex(0)
-      return
-    }
     setIndex(-COUNT_IN)
     metronome.start({
       bpm: tempo,
@@ -106,56 +100,30 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
     setPhase('idle')
   }
 
-  function advance() {
-    if (index + 1 >= beats.length) finish()
-    else setIndex(index + 1)
-  }
-
   function answer(clean: boolean) {
     setPhase('idle')
     if (!clean) return
     dispatch({
       type: 'cleanSet',
       exercise,
-      note: exercise <= 3 ? note : undefined,
-      bpm: exercise === 1 ? null : tempo,
+      note: exercise <= 2 ? note : undefined,
+      bpm: tempo,
     })
-    if (step !== 6) setChosenNote(null) // move on to the next unticked note
-    else if (exercise <= 3) setChosenNote(note) // same note again, faster; ticking it must not move us on
-    if (exercise === 5) setOrder(shuffled(NATURALS))
-    if (step === 6) setBpm(suggestNextBpm(tempo))
+    if (step !== 5) setChosenNote(null) // move on to the next unticked note
+    else if (exercise <= 2) setChosenNote(note) // same note again, faster; ticking it must not move us on
+    if (exercise === 4) setOrder(shuffled(NATURALS))
+    if (step === 5) setBpm(suggestNextBpm(tempo))
   }
-
-  // Step 1: Space advances, wherever focus is, except on Next (its own click advances) and
-  // form fields. Only while running, so it is off during the clean prompt.
-  useEffect(() => {
-    if (!running || exercise !== 1) return
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target
-      if (
-        e.code !== 'Space' ||
-        t === nextButton.current ||
-        t instanceof HTMLInputElement ||
-        t instanceof HTMLSelectElement ||
-        t instanceof HTMLTextAreaElement
-      )
-        return
-      e.preventDefault()
-      if (!e.repeat) advance()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
 
   // Keep focus on the control that matters for the phase. The clean prompt focuses its group,
   // not "Yes", so a stray Space or Enter can't record a clean set. Start is refocused only on
   // returning to idle, never on first mount, so loading the page doesn't move focus.
   useEffect(() => {
-    if (phase === 'running') (exercise === 1 ? nextButton : stopButton).current?.focus()
+    if (phase === 'running') stopButton.current?.focus()
     else if (phase === 'confirm') confirmBox.current?.focus()
     else if (lastPhase.current !== 'idle') startButton.current?.focus()
     lastPhase.current = phase
-  }, [phase, exercise])
+  }, [phase])
 
   // Leaving the step (the parent remounts us per step) stops the click and keeps the time.
   // A layout effect, so this cleanup runs inside the commit that swaps screens: the shared
@@ -190,12 +158,12 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
         </p>
         <p className="status">
           {stepProgressText(progress, step)}
-          {exercise !== 1 && step !== 6 && <> · Tempo {BASE_BPM} BPM</>}
+          {step !== 5 && <> · Tempo {BASE_BPM} BPM</>}
         </p>
       </section>
 
       <section className="controls">
-        {step === 6 && (
+        {step === 5 && (
           <div className="drill">
             <div className="picker" role="group" aria-label="Exercise">
               {DRILLS.map((d) => (
@@ -237,7 +205,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
           </div>
         )}
 
-        {exercise <= 3 && (
+        {exercise <= 2 && (
           <div className="picker" role="group" aria-label="Note">
             {pool.map((n) => {
               const ticked = done.includes(n)
@@ -258,7 +226,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
           </div>
         )}
 
-        {exercise === 4 && (
+        {exercise === 3 && (
           <div className="pair">
             <label>
               Up{' '}
@@ -315,7 +283,7 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
           </div>
         )}
 
-        {exercise === 5 && (
+        {exercise === 4 && (
           <div className="order">
             <ol className="order-row" aria-label="Note order">
               {order.map((n, i) => (
@@ -360,19 +328,14 @@ export function PracticeScreen({ step, progress, dispatch }: Props) {
             Start
           </button>
         )}
-        {running && exercise === 1 && (
-          <button type="button" ref={nextButton} className="primary" onClick={advance}>
-            Next string
-          </button>
-        )}
         {running && (
           <button type="button" ref={stopButton} onClick={stop}>
             Stop
           </button>
         )}
-        {step === 4 && phase === 'idle' && !progress.step4Easy && (
+        {step === 3 && phase === 'idle' && !progress.step3Easy && (
           <button type="button" onClick={() => dispatch({ type: 'markEasy' })}>
-            This feels easy: mark step 4 done
+            This feels easy: mark step 3 done
           </button>
         )}
       </div>

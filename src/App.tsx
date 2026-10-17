@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react'
 import { FretChart } from './components/FretChart'
+import { PositionsScreen } from './components/PositionsScreen'
 import { PracticeScreen } from './components/PracticeScreen'
 import { StepTabs } from './components/StepTabs'
 import { formatDuration } from './lib/format'
@@ -49,6 +50,7 @@ export default function App() {
   }
 
   const today = secondsOn(progress, localDateKey(new Date()))
+  const { currentStep } = progress
 
   return (
     <div className="app">
@@ -61,13 +63,23 @@ export default function App() {
 
       <StepTabs progress={progress} onOpen={openStep} />
 
-      <PracticeScreen key={progress.currentStep} step={progress.currentStep} progress={progress} dispatch={dispatch} />
+      {currentStep === 0 ? (
+        <PositionsScreen
+          windowStart={progress.windowStart}
+          onStartPractice={() => dispatch({ type: 'setStep', step: 1 })}
+        />
+      ) : (
+        <PracticeScreen key={currentStep} step={currentStep} progress={progress} dispatch={dispatch} />
+      )}
 
       <section className="reference">
         <div className="reference-bar">
-          <button type="button" onClick={() => dispatch({ type: 'toggleChart' })} aria-expanded={progress.chartVisible}>
-            {progress.chartVisible ? 'Hide note chart' : 'Show note chart'}
-          </button>
+          {/* Step 0 has its own chart, so the reference chart and its toggle are hidden there. */}
+          {currentStep !== 0 && (
+            <button type="button" onClick={() => dispatch({ type: 'toggleChart' })} aria-expanded={progress.chartVisible}>
+              {progress.chartVisible ? 'Hide note chart' : 'Show note chart'}
+            </button>
+          )}
           <label>
             Frets{' '}
             <select
@@ -82,7 +94,7 @@ export default function App() {
             </select>
           </label>
         </div>
-        {progress.chartVisible && <FretChart windowStart={progress.windowStart} />}
+        {currentStep !== 0 && progress.chartVisible && <FretChart windowStart={progress.windowStart} />}
       </section>
 
       <footer className="foot">

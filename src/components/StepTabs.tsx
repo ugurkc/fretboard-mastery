@@ -12,8 +12,9 @@ export function StepTabs({ progress, onOpen }: Props) {
     <nav className="steps" aria-label="Steps">
       {STEPS.map((step) => {
         const current = step === progress.currentStep
-        const done = isStepComplete(progress, step)
-        const locked = !isUnlocked(progress, step)
+        // Step 0 is a study page: it is never ticked and never locked.
+        const done = step !== 0 && isStepComplete(progress, step)
+        const locked = step !== 0 && !isUnlocked(progress, step)
         const classes = ['step', current && 'is-current', done && 'is-done', locked && 'is-locked']
         return (
           <button

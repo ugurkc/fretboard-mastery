@@ -13,13 +13,17 @@ A practice app for learning every note on the guitar fretboard, deployed to
   reducer, unlock rules, localStorage load/save), `metronome.ts` (Web Audio lookahead
   scheduler), `format.ts`, `steps.ts` (step copy).
 - `src/components/` — React views only; they render state and dispatch `ProgressEvent`s.
+  `PositionsScreen` is step 0 (a study page: every position of a note on one chart, no
+  metronome); `PracticeScreen` runs practice steps 1–5.
 - No CMS: there is no editable prose.
 
 ## Rules the app must keep (from the method)
 
 - Strings in order, never skipped: up = 6→1, down = 1→6.
-- The app never shows which fret to play — the chart is a reference with no highlight.
-- Steps unlock in order; a locked step can still be opened after a warning.
+- During practice (steps 1–5) the app never shows which fret to play; step 0 is the one place
+  positions are shown. The practice chart is a reference with no highlight.
+- Steps 0–5: step 0 never gates and is never ticked; practice steps unlock in order, and a
+  locked step can still be opened after a warning.
 - The app does not listen to the guitar. The player reports "clean" after each set.
 
 ## Testing conventions

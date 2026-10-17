@@ -495,6 +495,149 @@ select {
   font-size: 0.75rem;
 }
 
+/* Step 0: positions chart, drawn as a fretboard */
+.positions {
+  --fret-wire: var(--border);
+  --string-line: var(--muted);
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 640px;
+  font-variant-numeric: tabular-nums;
+}
+
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  .positions {
+    --fret-wire: color-mix(in srgb, var(--muted) 55%, var(--soft));
+    --string-line: color-mix(in srgb, var(--muted) 80%, var(--soft));
+  }
+}
+
+.positions caption {
+  text-align: left;
+  padding: 10px 12px 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.positions thead th {
+  padding: 4px 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  vertical-align: top;
+}
+
+.positions thead th:first-child {
+  width: 72px;
+  text-align: left;
+  padding-left: 12px;
+  font-weight: 500;
+}
+
+.inlay {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  height: 8px;
+  margin-top: 3px;
+}
+
+.inlay i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.7;
+}
+
+.positions tbody th {
+  text-align: left;
+  padding: 0 8px 0 12px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.positions tbody td {
+  position: relative;
+  height: 52px;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  background: var(--soft);
+  border-right: 2px solid var(--fret-wire);
+}
+
+/* The fret wire before the first fret in view; at fret 1 it is the nut. */
+.positions tbody td:first-of-type {
+  border-left: 2px solid var(--fret-wire);
+}
+
+.positions.from-nut tbody td:first-of-type {
+  border-left: 6px solid var(--string-line);
+}
+
+/* The string: a line through the middle of every cell, thicker towards the low E. */
+.positions tbody td::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--gauge, 1px);
+  transform: translateY(-50%);
+  background: var(--string-line);
+}
+
+.positions .string-1 {
+  --gauge: 1px;
+}
+
+.positions .string-2 {
+  --gauge: 1.5px;
+}
+
+.positions .string-3 {
+  --gauge: 2px;
+}
+
+.positions .string-4 {
+  --gauge: 2.5px;
+}
+
+.positions .string-5 {
+  --gauge: 3px;
+}
+
+.positions .string-6 {
+  --gauge: 3.5px;
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1;
+  box-shadow: 0 0 0 3px var(--soft);
+}
+
+.dot.is-pair {
+  font-size: 0.72rem;
+  gap: 1px;
+}
+
 .foot {
   display: flex;
   flex-wrap: wrap;
