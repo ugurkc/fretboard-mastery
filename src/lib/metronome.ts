@@ -5,3 +5,93 @@ export function beatsInWindow(nextTime: number, horizon: number, secondsPerBeat:
   for (let t = nextTime; t < horizon; t += secondsPerBeat) times.push(t)
   return times
 }
+
+const LOOKAHEAD_SECONDS = 0.1
+const TICK_MS = 25
+const START_DELAY_SECONDS = 0.1
+
+export interface MetronomeRun {
+  bpm: number
+  /** Clicks before beat 0; their indices are negative (-countIn .. -1). */
+  countIn: number
+  totalBeats: number
+  isAccent: (index: number) => boolean
+  /** Called on time with each beat, including count-in beats. */
+  onBeat: (index: number) => void
+  /** Called one beat after the last beat. */
+  onDone: () => void
+}
+
+type ClickKind = 'count' | 'beat' | 'accent'
+
+export class Metronome {
+  private ctx: AudioContext | null = null
+  private timer: ReturnType<typeof setInterval> | null = null
+  private uiTimers: ReturnType<typeof setTimeout>[] = []
+
+  /** Must be called from a user gesture (click) so the browser allows audio. */
+  start(run: MetronomeRun): void {
+    this.stop()
+    if (!(Number.isFinite(run.bpm) && run.bpm > 0)) return
+    this.ctx ??= new AudioContext()
+    const ctx = this.ctx
+    void ctx.resume()
+    const secondsPerBeat = 60 / run.bpm
+    let index = -run.countIn
+    let nextTime = ctx.currentTime + START_DELAY_SECONDS
+
+    const tick = () => {
+      for (const time of beatsInWindow(nextTime, ctx.currentTime + LOOKAHEAD_SECONDS, secondsPerBeat)) {
+        if (index >= run.totalBeats) {
+          this.clearScheduler()
+          this.at(time, () => {
+            this.stop()
+            run.onDone()
+          })
+          return
+        }
+        const beat = index
+        this.click(time, beat < 0 ? 'count' : run.isAccent(beat) ? 'accent' : 'beat')
+        this.at(time, () => run.onBeat(beat))
+        index += 1
+        nextTime = time + secondsPerBeat
+      }
+    }
+    // Set the interval before the first tick so a run that ends in that tick clears it.
+    this.timer = setInterval(tick, TICK_MS)
+    tick()
+  }
+
+  stop(): void {
+    this.clearScheduler()
+    for (const t of this.uiTimers) clearTimeout(t)
+    this.uiTimers = []
+  }
+
+  private clearScheduler(): void {
+    if (this.timer !== null) clearInterval(this.timer)
+    this.timer = null
+  }
+
+  /** Runs fn when the audio clock reaches `time`. */
+  private at(time: number, fn: () => void): void {
+    const ctx = this.ctx
+    if (!ctx) return
+    const delayMs = Math.max(0, (time - ctx.currentTime) * 1000)
+    this.uiTimers.push(setTimeout(fn, delayMs))
+  }
+
+  private click(time: number, kind: ClickKind): void {
+    const ctx = this.ctx
+    if (!ctx) return
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.frequency.value = kind === 'accent' ? 1500 : kind === 'count' ? 800 : 1000
+    gain.gain.setValueAtTime(0.0001, time)
+    gain.gain.exponentialRampToValueAtTime(0.5, time + 0.002)
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05)
+    osc.connect(gain).connect(ctx.destination)
+    osc.start(time)
+    osc.stop(time + 0.06)
+  }
+}
