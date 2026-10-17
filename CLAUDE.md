@@ -7,7 +7,7 @@ A practice app for learning every note on the guitar fretboard, deployed to
 
 ## Shape
 
-- `src/lib/` — all method logic, framework-free, each module with a Vitest suite:
+- `src/lib/` — all method logic, framework-free; every logic module has a Vitest suite (`steps.ts` is copy only):
   `notes.ts` (note names, fret maths for standard tuning and a 12-fret window),
   `sequence.ts` (the beat sequence of every exercise), `progress.ts` (progress state,
   reducer, unlock rules, localStorage load/save), `metronome.ts` (Web Audio lookahead
